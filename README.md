@@ -1,5 +1,5 @@
 # 1. 기능 보안 및 네트워크 설정
-`docker run -dit --name server --privileged ubuntu:22.04 /bin/bash`
+`docker run -dit --name server --init --cap-add NET_ADMIN --cap-add NET_RAW -p 15034:15034 ubuntu:noble /bin/bash`
  
 ` apt-get update`
 
@@ -338,3 +338,113 @@ other::---
 
 |캡쳐 
 ![alt text](image-6.png) 
+
+#
+#
+# 3. 애플리케이션 실행 환경 구성
+# 3-1. 환경 변수
+
+1) 앱 실행 환경 설정
+
+필수적 환경 변수들
+```bash
+export AGENT_HOME=/home/agent-admin/agent-app
+
+export AGENT_PORT=15034
+
+export AGGENT_UPLOAD_DIR=$AGENT_HOME/upload_files
+
+export AGENT_KEY_PATH=$AGENT_HOME/api_keys/t_secret.key
+```
+
+기본값 지정
+(미지정 하여도 앱 돌아감, 대신 앱 코드 기본값에 따라 log가 쌓임)
+
+앱의 기본값이 무엇인지 모르니까 미리 지정하는 것
+```bash
+export AGENT_LOG_DIR=/var/log/agent-app
+```
+
+#
+# 3-2. 키 파일 생성
+
+앱 실행을 위한 인증키(문자열) 생성
+
+```bash
+mkdir -p $AGENT_HOME/api_keys
+
+
+echo 'agent_api_key_test' > $AGENT_KEY_PATH 
+
+cat $AGENT_KEY_PATH
+```
+
+#
+# 3-3. 앱 실행 및 성공 기준
+1) agent-app 다운 받기 
+```bash
+#로컬pc 파일을 컨테이너로 옮기기
+dave1392857@c4r8s7 ~ % docker cp ~/Downloads/agent-app ad672a2d4682:/home/agent-admin/agent-app/
+
+Successfully copied 7.93MB to ad672a2d4682:/home/agent-admin/agent-app/
+```
+
+2) agent-app 사용자 변경
+
+로컬pc에서 건너왔기 때문에 로컬 사용자가 user
+
+컨테이너 안에서 새롭게 user를 정의해 주어야 한다.
+
+```bash
+#agent-admin(일반 계정)으로 앱 실행할 것이기에 user= agent-admin
+
+dave1392857@c4r8s7: docker exec -it server bash
+
+root@ad672a2d4682: 
+export AGENT_HOME=/home/agent-admin/agent-app
+
+
+chmod agent-admin:agent-admin $AGENT_HOME/agent-app
+
+
+ls -l $AGENT_HOME/agent-app
+
+-rw-rw-r-- 1 agent-admin agent-admin 7926296 Jan 29 10:36 /home/agent-admin/agent-app/agent-app
+```
+
+3) agent-app 실행
+```bash
+#agent-admin 계정이 user가 되었기에 x(실행) 권한 부여 가능
+chmod +x $AGENT_HOME/agent-app
+
+
+ls -l $AGENT_HOME/agent-app
+
+-rwxrwxr-x 1 agent-admin agent-admin 7926296 Jan 29 10:36 /home/agent-admin/agent-app/agent-app
+
+
+#앱 실행
+agent-admin@ad672a2d4682:~$ cd $AGENT_HOME
+
+
+agent-admin@ad672a2d4682:~/agent-app$ ./agent-app
+
+>>> Starting Agent Boot Sequence...
+[1/5] Checking User Account               [OK]
+ ... Running as service user 'agent-admin' (uid=1001)
+[2/5] Verifying Environment Variables     [OK]
+ ... All required Envs correct
+[3/5] Checking Required Files             [OK]
+ ... Verified 'secret.key' with correct key string.
+[4/5] Checking Port Availability          [OK]
+ ... Port 15034 is available.
+[5/5] Verifying Log Permission            [OK]
+ ... Log directory is writable: /var/log/agent-app
+------------------------------------------------------------
+All Boot Checks Passed!
+Agent READY
+```
+|캡쳐
+![alt text](image-8.png)
+
+
