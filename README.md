@@ -5,6 +5,8 @@
 
 `apt-get install -y openssh-server ufw`
 
+`apt-get install -y iproute2`
+
 실습에 용이한 22.04 버전으로 리눅스 서버를 구축 
 
 최신 패키지를 다운
@@ -404,7 +406,7 @@ root@ad672a2d4682:
 export AGENT_HOME=/home/agent-admin/agent-app
 
 
-chmod agent-admin:agent-admin $AGENT_HOME/agent-app
+chown agent-admin:agent-admin $AGENT_HOME/agent-app
 
 
 ls -l $AGENT_HOME/agent-app
@@ -415,6 +417,19 @@ ls -l $AGENT_HOME/agent-app
 3) agent-app 실행
 ```bash
 #agent-admin 계정이 user가 되었기에 x(실행) 권한 부여 가능
+
+export AGENT_HOME=/home/agent-admin/agent-app
+
+export AGENT_PORT=15034
+
+export AGENT_UPLOAD_DIR=$AGENT_HOME/upload_files
+
+export AGENT_KEY_PATH=$AGENT_HOME/api_keys
+/secret.key
+
+export AGENT_LOG_DIR=/var/log/agent-app
+#root > agent-admin 으로 계정 바뀌었으니까 다시 환경변수 설정
+
 chmod +x $AGENT_HOME/agent-app
 
 
@@ -448,3 +463,190 @@ Agent READY
 ![alt text](image-8.png)
 
 
+#
+#
+# 4. 시스템 관제 자동화 스크립트(monitor.sh) 구현
+
+
+# 4-1 파일 위치/권한 정책
+1) monitor.sh 경로 및 권한 설정
+
+
+#바이너리 파일 실행(admin) >> 권한 설정 (root)
+`root@600fd0b17301:/home export AGENT_HOME=/home/agent-admin/agent-app`
+
+```bash
+#파일 생성
+mkdir -p $AGENT_HOME/bin
+
+
+touch $AGENT_HOME/bin/monitor.sh
+
+
+# 확인
+/home/agent-admin/agent-app/bin ls
+
+monitor.sh
+```
+```bash
+#권한 설정
+chown agent-dev:agent-core $AGENT_HOME/bin/monitor.sh
+
+
+chmod 750 $AGENT_HOME/bin/monitor.sh
+
+
+#확인
+ls -l $AGENT_HOME/bin/monitor.sh
+
+-rwxr-x--- 1 agent-dev agent-core 0 May 21 23:19 /home/agent-admin/agent-app/bin/monitor.sh
+```
+
+2) cron 설치 및 편집
+```bash
+#1. cron 설치
+apt-get install -y cron
+
+
+apt-get install -y nano
+(cron 편집에 사용)
+
+#2. cron 실행
+service cron start
+
+
+service cron status
+
+ * cron is running
+```
+```bash
+#3. cron 편집 
+crontab -u agent-admin -e
+
+<nano editor>
+*/1 * * * * /home/agent-admin/agent-app/bin/monitor.sh >> /var/log/agent-app/monitor.log 2>&1
+
+
+crontab -u agent-admin -l
+
+# Edit this file to introduce tasks to be run by cron.
+# 
+# Each task to run has to be defined through a single line
+# indicating with different fields when the task will be run
+# and what command to run for the task
+# 
+# To define the time you can provide concrete values for
+# minute (m), hour (h), day of month (dom), month (mon),
+# and day of week (dow) or use '*' in these fields (for 'any').
+# 
+# Notice that tasks will be started based on the cron's system
+# daemon's notion of time and timezones.
+# 
+# Output of the crontab jobs (including errors) is sent through
+# email to the user the crontab file belongs to (unless redirected).
+# 
+# For example, you can run a backup of all your user accounts
+# at 5 a.m every week with:
+# 0 5 * * 1 tar -zcf /var/backups/home.tgz /home/
+# 
+# For more information see the manual pages of crontab(5) and cron(8)
+# 
+# m h  dom mon dow   command
+*/1 * * * * /home/agent-admin/agent-app/bin/monitor.sh >> /var/log/agent-app/monitor.log 2>&1
+```
+
+#
+# 4-2. Health Check (실패 시 종료)
+
+1) 바이너리 백그라운드 실행
+`agent-admin@600fd0b17301:~/agent-app/agent-app$ ./agent-app-linux-x86 > /dev/null 2>&1 &`
+
+2) 프로세스 확인
+```bash
+pgrep -f agent-app-linux-x86
+
+4758 #메인 pid
+4760 #쎄컨 pid
+```
+
+3) 포트 확인
+```bash
+ss -tlnp | grep 15034
+
+LISTEN 0      1            0.0.0.0:15034      0.0.0.0:* 
+```
+
+4) Health Check 스크립트 작성
+```bash
+nano $AGENT_HOME/bin/monitor.sh
+
+>> nano enter 
+
+#!/bin/bash
+
+# =====================
+# Health Check
+# =====================
+
+# 1. 프로세스 확인
+if ! pgrep -f "agent-app-linux-x86" > /dev/null 2>&1; then
+    echo "[ERROR] agent-app process is not running"
+    exit 1
+fi
+
+# 2. 포트 확인
+if ! ss -tlnp | grep -q ":15034"; then
+    echo "[ERROR] Port 15034 is not listening"
+    exit 1
+fi
+
+echo "[OK] Health Check Passed"
+
+>> ^c + x + enter
+
+cat $AGENT_HOME/bin/monitor.sh
+```
+```
+#!/bin/bash
+
+# =====================
+# Health Check
+# =====================
+
+# 1. 프로세스 확인
+if ! pgrep -f "agent-app-linux-x86" > /dev/null 2>&1; then
+    echo "[ERROR] agent-app process is not running"
+    exit 1
+fi
+
+# 2. 포트 확인
+if ! ss -tlnp | grep -q ":15034"; then
+    echo "[ERROR] Port 15034 is not listening"
+    exit 1
+fi
+
+echo "[OK] Health Check Passed"
+```
+
+5) 실행 확인
+```bash
+bash $AGENT_HOME/bin/monitor.sh
+
+tail -f /var/log/agent-app/monitor.log
+
+[OK] Health Check Passed
+[OK] Health Check Passed
+[OK] Health Check Passed
+
+#파일 종료 후
+cat /var/log/agent-app/monitor.log
+
+[OK] Health Check Passed
+[OK] Health Check Passed
+[OK] Health Check Passed
+[OK] Health Check Passed
+[OK] Health Check Passed
+[ERROR] agent-app process is not running
+[ERROR] agent-app process is not running
+[ERROR] agent-app process is not running
+```
