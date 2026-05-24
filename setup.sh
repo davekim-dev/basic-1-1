@@ -14,7 +14,7 @@ fi
 # 1. 컨테이너 생성 (기능 보안 및 네트워크 설정)
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [1/9] 컨테이너 생성 (ubuntu:noble) ==="
+echo "=== [1/11] 컨테이너 생성 (ubuntu:noble) ==="
 docker run -dit \
   --name "$CONTAINER_NAME" \
   --init \
@@ -28,7 +28,7 @@ docker run -dit \
 # 2. 패키지 업데이트 / 설치 / 타임존 설정
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [2/9] 패키지 설치 및 타임존 설정 (Asia/Seoul) ==="
+echo "=== [2/11] 패키지 설치 및 타임존 설정 (Asia/Seoul) ==="
 docker exec "$CONTAINER_NAME" bash -c "
   apt-get update -q &&
   DEBIAN_FRONTEND=noninteractive TZ=Asia/Seoul \
@@ -41,7 +41,7 @@ docker exec "$CONTAINER_NAME" bash -c "
 # 3. SSH 설정 (포트 20022 변경 / root 원격 로그인 차단)
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [3/9] SSH 설정 — 포트 20022 / PermitRootLogin no ==="
+echo "=== [3/11] SSH 설정 — 포트 20022 / PermitRootLogin no ==="
 docker exec "$CONTAINER_NAME" bash -c "
   sed -i 's/#Port 22/Port 20022/' /etc/ssh/sshd_config &&
   sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config &&
@@ -52,7 +52,7 @@ docker exec "$CONTAINER_NAME" bash -c "
 # 4. UFW 방화벽 설정
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [4/9] UFW 방화벽 설정 (20022/tcp, 15034/tcp 허용) ==="
+echo "=== [4/11] UFW 방화벽 설정 (20022/tcp, 15034/tcp 허용) ==="
 docker exec "$CONTAINER_NAME" bash -c "
   ufw default deny incoming &&
   ufw default allow outgoing &&
@@ -65,7 +65,7 @@ docker exec "$CONTAINER_NAME" bash -c "
 # 5. 계정 생성 (agent-admin / agent-dev / agent-test)
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [5/9] 계정 생성 (agent-admin / agent-dev / agent-test) ==="
+echo "=== [5/11] 계정 생성 (agent-admin / agent-dev / agent-test) ==="
 docker exec "$CONTAINER_NAME" bash -c "
   useradd -m -s /bin/bash agent-admin &&
   echo 'agent-admin:Admin1234!' | chpasswd &&
@@ -81,7 +81,7 @@ docker exec "$CONTAINER_NAME" bash -c "
 #    agent-core  : admin + dev
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [6/9] 그룹 생성 및 계정 추가 (agent-common / agent-core) ==="
+echo "=== [6/11] 그룹 생성 및 계정 추가 (agent-common / agent-core) ==="
 docker exec "$CONTAINER_NAME" bash -c "
   groupadd agent-common &&
   usermod -aG agent-common agent-admin &&
@@ -97,7 +97,7 @@ docker exec "$CONTAINER_NAME" bash -c "
 #    /var/log/agent-app       → agent-core   (770)
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [7/9] 디렉토리 구조 및 권한 설정 ==="
+echo "=== [7/11] 디렉토리 구조 및 권한 설정 ==="
 docker exec "$CONTAINER_NAME" bash -c "
   mkdir -p /opt/agent/api_keys /opt/agent/upload_files /var/log/agent-app &&
   chown root:agent-common /opt/agent/upload_files &&
@@ -112,7 +112,7 @@ docker exec "$CONTAINER_NAME" bash -c "
 # 8. 앱 디렉토리 / 키 파일 생성 + 바이너리 복사
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [8/9] 앱 디렉토리·키 파일 생성 및 agent-app 바이너리 복사 ==="
+echo "=== [8/11] 앱 디렉토리·키 파일 생성 및 agent-app 바이너리 복사 ==="
 docker exec "$CONTAINER_NAME" bash -c "
   mkdir -p /home/agent-admin/agent-app/api_keys \
            /home/agent-admin/agent-app/upload_files &&
@@ -134,10 +134,26 @@ docker exec "$CONTAINER_NAME" bash -c "
 "
 
 # ────────────────────────────────────────────────────
-# 9. 계정 / 그룹 현황 출력
+# 9. 시스템 환경 변수 설정 (/etc/environment)
+#    su - 로그인 셸 전환 시 PAM이 자동 로드 — 중복 export 불필요
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [9/10] 계정 / 그룹 현황 ==="
+echo "=== [9/11] 시스템 환경 변수 설정 (/etc/environment) ==="
+docker exec "$CONTAINER_NAME" bash -c "
+  cat >> /etc/environment << 'EOF'
+AGENT_HOME=/home/agent-admin/agent-app
+AGENT_PORT=15034
+AGENT_UPLOAD_DIR=/home/agent-admin/agent-app/upload_files
+AGENT_KEY_PATH=/home/agent-admin/agent-app/api_keys/secret.key
+AGENT_LOG_DIR=/var/log/agent-app
+EOF
+"
+
+# ────────────────────────────────────────────────────
+# 10. 계정 / 그룹 현황 출력
+# ────────────────────────────────────────────────────
+echo ""
+echo "=== [10/11] 계정 / 그룹 현황 ==="
 echo ""
 echo "--- /etc/passwd (agent 계정) ---"
 docker exec "$CONTAINER_NAME" bash -c "cat /etc/passwd | grep agent"
@@ -146,19 +162,16 @@ echo "--- /etc/group (agent 그룹) ---"
 docker exec "$CONTAINER_NAME" bash -c "cat /etc/group | grep agent"
 
 # ────────────────────────────────────────────────────
-# 10. agent-app 실행 — 'Agent READY' 출력 시 스크립트 종료
+# 11. agent-app 실행 — 'Agent READY' 출력 시 스크립트 종료
+#     /etc/environment 가 su - 로그인 셸에 자동 적용되므로
+#     별도 export 없이 바로 실행
 # ────────────────────────────────────────────────────
 echo ""
-echo "=== [10/10] agent-app 실행 — 'Agent READY' 확인 시 스크립트 종료 ==="
+echo "=== [11/11] agent-app 실행 — 'Agent READY' 확인 시 스크립트 종료 ==="
 echo ""
 
 docker exec "$CONTAINER_NAME" \
   su - agent-admin -c "
-    export AGENT_HOME=/home/agent-admin/agent-app
-    export AGENT_PORT=15034
-    export AGENT_UPLOAD_DIR=\$AGENT_HOME/upload_files
-    export AGENT_KEY_PATH=\$AGENT_HOME/api_keys
-    export AGENT_LOG_DIR=/var/log/agent-app
     cd \$AGENT_HOME && ./agent-app
   " | sed '/Agent READY/q'
 

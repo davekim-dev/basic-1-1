@@ -425,7 +425,7 @@ export AGENT_PORT=15034
 export AGENT_UPLOAD_DIR=$AGENT_HOME/upload_files
 
 export AGENT_KEY_PATH=$AGENT_HOME/api_keys
-/secret.key
+
 
 export AGENT_LOG_DIR=/var/log/agent-app
 #root > agent-admin 으로 계정 바뀌었으니까 다시 환경변수 설정
@@ -514,6 +514,8 @@ apt-get install -y nano
 #2. cron 실행
 service cron start
 
+ * Starting periodic command scheduler cron 
+
 
 service cron status
 
@@ -559,7 +561,10 @@ crontab -u agent-admin -l
 # 4-2. Health Check (실패 시 종료)
 
 1) 바이너리 백그라운드 실행
-`agent-admin@600fd0b17301:~/agent-app/agent-app$ ./agent-app-linux-x86 > /dev/null 2>&1 &`
+
+`agent-admin@600fd0b17301:cd ~/agent-app/agent-app` 
+
+`./agent-app-linux-x86 > /dev/null 2>&1 &`
 
 2) 프로세스 확인
 ```bash
