@@ -32,7 +32,7 @@ echo "=== [2/15] 패키지 설치 및 타임존 설정 (Asia/Seoul) ==="
 docker exec "$CONTAINER_NAME" bash -c "
   apt-get update -q &&
   DEBIAN_FRONTEND=noninteractive TZ=Asia/Seoul \
-    apt-get install -y openssh-server ufw tzdata iproute2 cron &&
+    apt-get install -y openssh-server ufw tzdata iproute2 cron nano &&
   ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime &&
   echo 'Asia/Seoul' > /etc/timezone
 "
@@ -135,11 +135,11 @@ else
 fi
 echo ">>> 컨테이너 아키텍처: $CONTAINER_ARCH → $BINARY_NAME 복사"
 
-docker cp "$AGENT_APP_SRC/$BINARY_NAME" "$CONTAINER_NAME:/home/agent-admin/agent-app/agent-app"
+docker cp "$AGENT_APP_SRC/$BINARY_NAME" "$CONTAINER_NAME:/home/agent-admin/agent-app/$BINARY_NAME"
 
 docker exec "$CONTAINER_NAME" bash -c "
-  chown agent-admin:agent-admin /home/agent-admin/agent-app/agent-app &&
-  chmod +x /home/agent-admin/agent-app/agent-app
+  chown agent-admin:agent-admin /home/agent-admin/agent-app/$BINARY_NAME &&
+  chmod +x /home/agent-admin/agent-app/$BINARY_NAME
 "
 
 # ────────────────────────────────────────────────────
@@ -230,21 +230,40 @@ docker exec "$CONTAINER_NAME" bash -c "
 # Health Check
 # =====================
 
-TIMESTAMP=\$(date '+%Y-%m-%d %H:%M:%S')
-
 # 1. 프로세스 확인
-if ! pgrep -f 'agent-app' > /dev/null 2>&1; then
-    echo \"[\$TIMESTAMP] [ERROR] agent-app process is not running\"
+if ! pgrep -f \"$BINARY_NAME\" > /dev/null 2>&1; then
+    echo \"[ERROR] agent-app process is not running\"
     exit 1
 fi
 
 # 2. 포트 확인
-if ! ss -tlnp | grep -q ':15034'; then
-    echo \"[\$TIMESTAMP] [ERROR] Port 15034 is not listening\"
+if ! ss -tlnp | grep -q \":15034\"; then
+    echo \"[ERROR] Port 15034 is not listening\"
     exit 1
 fi
 
-echo \"[\$TIMESTAMP] [OK] Health Check Passed\"
+echo \"[OK] Health Check Passed\"
+
+# ──────────────────────────────────────────
+# [상태 점검] 방화벽 활성화 상태 확인 (경고만 출력)
+# ──────────────────────────────────────────
+check_firewall() {
+    if ! ufw status 2>/dev/null | grep -q \"^Status: active\"; then
+        echo \"[WARNING] 방화벽(UFW)이 비활성 상태입니다.\"
+    fi
+}
+check_firewall
+
+# ──────────────────────────────────────────
+# [자원 수집] CPU / 메모리 / 디스크 사용률
+# ──────────────────────────────────────────
+CPU=\$(top -bn1 | grep \"Cpu(s)\" | awk '{print \$2}')
+MEM=\$(free | grep Mem | awk '{printf \"%.1f\", \$3/\$2*100}')
+DISK=\$(df / | grep / | awk '{print \$5}' | tr -d '%')
+
+echo \"[INFO] CPU  사용률: \${CPU}%\"
+echo \"[INFO] MEM  사용률: \${MEM}%\"
+echo \"[INFO] DISK 사용률: \${DISK}%\"
 MONEOF
   echo '--- monitor.sh 내용 ---'
   cat /home/agent-admin/agent-app/bin/monitor.sh
@@ -258,13 +277,13 @@ echo "=== [14] 바이너리앱 백그라운드 실행 (agent-admin) ==="
 echo ""
 
 echo "--- agent-app 바이너리 확인 ---"
-docker exec "$CONTAINER_NAME" ls -la /home/agent-admin/agent-app/agent-app 2>/dev/null || echo "(바이너리 없음)"
+docker exec "$CONTAINER_NAME" ls -la /home/agent-admin/agent-app/$BINARY_NAME 2>/dev/null || echo "(바이너리 없음)"
 echo ""
 
 docker exec "$CONTAINER_NAME" \
   su - agent-admin -c "
     . /etc/profile.d/agent-env.sh
-    cd /home/agent-admin/agent-app && nohup ./agent-app > /tmp/agent-run.log 2>&1 &
+    cd /home/agent-admin/agent-app && nohup ./$BINARY_NAME > /tmp/agent-run.log 2>&1 &
     echo \$! > /tmp/agent-app.pid
   "
 

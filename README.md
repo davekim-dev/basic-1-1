@@ -658,6 +658,29 @@ cat /var/log/agent-app/monitor.log
 
 #
 # 4-3. 상태 점검
+1) 방화벽 상태 확인 후 꺼져 있으면 경고 출력
+```bash
+if ! ufw status 2>/dev/null | grep -q "^Status: active"; then
+        echo "[WARNING] 방화벽(UFW)이 비활성 상태입니다."
+    fi
+```
+2) 스크립트에 추가
+```bash
+nano $AGENT_HOME/bin/monitor.sh
+>> nano enter
+
+# [상태 점검] 방화벽 활성화 상태 확인 (경고만 출력)
+# ──────────────────────────────────────────
+check_firewall() {
+    if ! ufw status 2>/dev/null | grep -q "^Status: active"; then
+        echo "[WARNING] 방화벽(UFW)이 비활성 상태입니다."
+    fi
+}
+check_firewall
+```
+
+#
+# 4-4. 자원 수집
 1) 스크립트에 추가
 ```bash
 # ──────────────────────────────────────────
