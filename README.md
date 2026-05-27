@@ -655,3 +655,19 @@ cat /var/log/agent-app/monitor.log
 [ERROR] agent-app process is not running
 [ERROR] agent-app process is not running
 ```
+
+#
+# 4-3. 상태 점검
+1) 스크립트에 추가
+```bash
+# ──────────────────────────────────────────
+# [자원 수집] CPU / 메모리 / 디스크 사용률
+# ──────────────────────────────────────────
+CPU=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}')
+MEM=$(free | grep Mem | awk '{printf "%.1f", $3/$2*100}')
+DISK=$(df / | grep / | awk '{print $5}' | tr -d '%')
+
+echo "[INFO] CPU  사용률: ${CPU}%"
+echo "[INFO] MEM  사용률: ${MEM}%"
+echo "[INFO] DISK 사용률: ${DISK}%"
+```
