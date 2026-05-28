@@ -32,7 +32,7 @@ echo "=== [2/15] 패키지 설치 및 타임존 설정 (Asia/Seoul) ==="
 docker exec "$CONTAINER_NAME" bash -c "
   apt-get update -q &&
   DEBIAN_FRONTEND=noninteractive TZ=Asia/Seoul \
-    apt-get install -y openssh-server ufw tzdata iproute2 cron nano &&
+    apt-get install -y openssh-server ufw tzdata iproute2 cron nano bc &&
   ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime &&
   echo 'Asia/Seoul' > /etc/timezone
 "
@@ -218,12 +218,12 @@ docker exec "$CONTAINER_NAME" bash -c "
 "
 
 # ────────────────────────────────────────────────────
-# 13. 헬스체크 스크립트 작성
+# 13. 헬스체크 스크립트 작성 (총 스크립트)
 # ────────────────────────────────────────────────────
 echo ""
 echo "=== [13] 헬스체크 스크립트 작성 ==="
-docker exec "$CONTAINER_NAME" bash -c "
-  cat > /home/agent-admin/agent-app/bin/monitor.sh << 'MONEOF'
+MONITOR_TMP=$(mktemp)
+cat > "$MONITOR_TMP" << MONEOF
 #!/bin/bash
 
 # =====================
@@ -231,40 +231,89 @@ docker exec "$CONTAINER_NAME" bash -c "
 # =====================
 
 # 1. 프로세스 확인
-if ! pgrep -f \"$BINARY_NAME\" > /dev/null 2>&1; then
-    echo \"[ERROR] agent-app process is not running\"
+if ! pgrep -f "$BINARY_NAME" > /dev/null 2>&1; then
+    echo "[ERROR] agent-app process is not running"
     exit 1
 fi
 
 # 2. 포트 확인
-if ! ss -tlnp | grep -q \":15034\"; then
-    echo \"[ERROR] Port 15034 is not listening\"
+if ! ss -tlnp | grep -q ":15034"; then
+    echo "[ERROR] Port 15034 is not listening"
     exit 1
 fi
 
-echo \"[OK] Health Check Passed\"
+echo "[OK] Health Check Passed"
 
-# ──────────────────────────────────────────
+#──────────────────────────────────────────
 # [상태 점검] 방화벽 활성화 상태 확인 (경고만 출력)
 # ──────────────────────────────────────────
 check_firewall() {
-    if ! ufw status 2>/dev/null | grep -q \"^Status: active\"; then
-        echo \"[WARNING] 방화벽(UFW)이 비활성 상태입니다.\"
+    if ! ufw status 2>/dev/null | grep -q "^Status: active"; then
+        echo "[WARNING] 방화벽(UFW)이 비활성 상태입니다."
     fi
 }
 check_firewall
 
+
 # ──────────────────────────────────────────
 # [자원 수집] CPU / 메모리 / 디스크 사용률
 # ──────────────────────────────────────────
-CPU=\$(top -bn1 | grep \"Cpu(s)\" | awk '{print \$2}')
-MEM=\$(free | grep Mem | awk '{printf \"%.1f\", \$3/\$2*100}')
+CPU=\$(top -bn1 | grep "Cpu(s)" | awk '{print \$2}')
+MEM=\$(free | grep Mem | awk '{printf "%.1f", \$3/\$2*100}')
 DISK=\$(df / | grep / | awk '{print \$5}' | tr -d '%')
 
-echo \"[INFO] CPU  사용률: \${CPU}%\"
-echo \"[INFO] MEM  사용률: \${MEM}%\"
-echo \"[INFO] DISK 사용률: \${DISK}%\"
+echo "[INFO] CPU  사용률: \${CPU}%"
+echo "[INFO] MEM  사용률: \${MEM}%"
+echo "[INFO] DISK 사용률: \${DISK}%"
+
+
+# ──────────────────────────────────────────
+# [임계값 경고]
+# ──────────────────────────────────────────
+if [ \$(echo "\$CPU > 20" | bc) -eq 1 ]; then
+    echo "[WARNING] CPU 사용률 초과: \${CPU}%"
+fi
+
+if [ \$(echo "\$MEM > 10" | bc) -eq 1 ]; then
+    echo "[WARNING] MEM 사용률 초과: \${MEM}%"
+fi
+
+if [ "\$DISK" -gt 80 ]; then
+    echo "[WARNING] DISK 사용률 초과: \${DISK}%"
+fi
+
+# ──────────────────────────────────────────
+# [로그 기록]
+# ──────────────────────────────────────────
+TIMESTAMP=\$(date "+%Y-%m-%d %H:%M:%S")
+PID=\$(pgrep -f "$BINARY_NAME")
+
+echo "[\${TIMESTAMP}] PID:\${PID} CPU:\${CPU}% MEM:\${MEM}% DISK_USED:\${DISK}%"
+
+
+# ──────────────────────────────────────────
+# [로그 용량 관리] 최대 10MB / 10개 파일 유지
+# ──────────────────────────────────────────
+LOG_FILE=/var/log/agent-app/monitor.log
+MAX_SIZE=\$((10 * 1024 * 1024))
+MAX_COUNT=10
+
+if [ -f "\$LOG_FILE" ]; then
+    CURRENT_SIZE=\$(stat -c%s "\$LOG_FILE")
+    if [ "\$CURRENT_SIZE" -gt "\$MAX_SIZE" ]; then
+        for i in \$(seq \$MAX_COUNT -1 1); do
+            if [ -f "\${LOG_FILE}.\$((\$i-1))" ]; then
+                mv "\${LOG_FILE}.\$((\$i-1))" "\${LOG_FILE}.\${i}"
+            fi
+        done
+        mv "\$LOG_FILE" "\${LOG_FILE}.1"
+    fi
+fi
 MONEOF
+docker cp "$MONITOR_TMP" "$CONTAINER_NAME:/home/agent-admin/agent-app/bin/monitor.sh"
+rm -f "$MONITOR_TMP"
+
+docker exec "$CONTAINER_NAME" bash -c "
   echo '--- monitor.sh 내용 ---'
   cat /home/agent-admin/agent-app/bin/monitor.sh
 "

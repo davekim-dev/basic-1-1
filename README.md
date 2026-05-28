@@ -7,6 +7,8 @@
 
 `apt-get install -y iproute2`
 
+`apt-get install -y bc`
+
 실습에 용이한 22.04 버전으로 리눅스 서버를 구축 
 
 최신 패키지를 다운
@@ -694,3 +696,204 @@ echo "[INFO] CPU  사용률: ${CPU}%"
 echo "[INFO] MEM  사용률: ${MEM}%"
 echo "[INFO] DISK 사용률: ${DISK}%"
 ```
+
+#
+# 4-5. 임계값 경고
+1) 스크립트 추가
+```bash
+# ──────────────────────────────────────────
+# [임계값 경고]
+# ──────────────────────────────────────────
+if [ $(echo "$CPU > 20" | bc) -eq 1 ]; then
+    echo "[WARNING] CPU 사용률 초과: ${CPU}%"
+fi
+
+if [ $(echo "$MEM > 10" | bc) -eq 1 ]; then
+    echo "[WARNING] MEM 사용률 초과: ${MEM}%"
+fi
+
+if [ "$DISK" -gt 80 ]; then
+    echo "[WARNING] DISK 사용률 초과: ${DISK}%"
+fi
+```
+
+#
+# 4-6. 로그 기록
+1) 스크립트에 추가
+```bash
+# ──────────────────────────────────────────
+# [로그 기록]
+# ──────────────────────────────────────────
+TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+PID=$(pgrep -f agent_app.py)
+
+echo "[${TIMESTAMP}] PID:${PID} CPU:${CPU}% MEM:${MEM}% DISK_USED:${DISK}%" 
+```
+
+#
+# 4-7. 로그 파일 용량 관릴
+
+```bash
+# ──────────────────────────────────────────
+# [로그 용량 관리] 최대 10MB / 10개 파일 유지
+# ──────────────────────────────────────────
+LOG_FILE=/var/log/agent-app/monitor.log
+MAX_SIZE=$((10 * 1024 * 1024))  # 10MB를 바이트로 변환
+MAX_COUNT=10
+
+if [ -f "$LOG_FILE" ]; then
+    CURRENT_SIZE=$(stat -c%s "$LOG_FILE")
+    if [ "$CURRENT_SIZE" -gt "$MAX_SIZE" ]; then
+        for i in $(seq $MAX_COUNT -1 1); do
+            if [ -f "${LOG_FILE}.$((i-1))" ]; then
+                mv "${LOG_FILE}.$((i-1))" "${LOG_FILE}.${i}"
+            fi
+        done
+        mv "$LOG_FILE" "${LOG_FILE}.1"
+    fi
+fi
+```
+
+```
+1회차 - monitor.log 가 10MB 초과
+monitor.log      → monitor.log.1
+monitor.log 새로 생성
+
+2회차 - monitor.log 가 또 10MB 초과
+monitor.log.1    → monitor.log.2
+monitor.log      → monitor.log.1
+monitor.log 새로 생성
+
+3회차 - monitor.log 가 또 10MB 초과
+monitor.log.2    → monitor.log.3
+monitor.log.1    → monitor.log.2
+monitor.log      → monitor.log.1
+monitor.log 새로 생성
+
+...
+
+10회차 - 파일이 10개가 된 상태에서 또 10MB 초과
+monitor.log.10   ← 가장 오래된 파일 덮어씌워져서 사라짐
+monitor.log.9    → monitor.log.10
+monitor.log.8    → monitor.log.9
+...
+monitor.log      → monitor.log.1
+monitor.log 새로 생성
+```
+
+
+
+#
+# 총 스크립트
+
+```bash
+#!/bin/bash
+
+# =====================
+# Health Check
+# =====================
+
+# 1. 프로세스 확인
+if ! pgrep -f "agent-app-linux-x86" > /dev/null 2>&1; then
+    echo "[ERROR] agent-app process is not running"
+    exit 1
+fi
+
+# 2. 포트 확인
+if ! ss -tlnp | grep -q ":15034"; then
+    echo "[ERROR] Port 15034 is not listening"
+    exit 1
+fi
+
+echo "[OK] Health Check Passed"
+
+#──────────────────────────────────────────
+# [상태 점검] 방화벽 활성화 상태 확인 (경고만 출력)
+# ──────────────────────────────────────────
+check_firewall() {
+    if ! ufw status 2>/dev/null | grep -q "^Status: active"; then
+        echo "[WARNING] 방화벽(UFW)이 비활성 상태입니다."
+    fi
+}
+check_firewall
+
+
+# ──────────────────────────────────────────
+# [자원 수집] CPU / 메모리 / 디스크 사용률
+# ──────────────────────────────────────────
+CPU=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}')
+MEM=$(free | grep Mem | awk '{printf "%.1f", $3/$2*100}')
+DISK=$(df / | grep / | awk '{print $5}' | tr -d '%')
+
+echo "[INFO] CPU  사용률: ${CPU}%"
+echo "[INFO] MEM  사용률: ${MEM}%"
+echo "[INFO] DISK 사용률: ${DISK}%"
+
+
+# ──────────────────────────────────────────
+# [임계값 경고]
+# ──────────────────────────────────────────
+if [ $(echo "$CPU > 20" | bc) -eq 1 ]; then
+    echo "[WARNING] CPU 사용률 초과: ${CPU}%"
+fi
+
+if [ $(echo "$MEM > 10" | bc) -eq 1 ]; then
+    echo "[WARNING] MEM 사용률 초과: ${MEM}%"
+fi
+
+if [ "$DISK" -gt 80 ]; then
+    echo "[WARNING] DISK 사용률 초과: ${DISK}%"
+fi
+
+# ──────────────────────────────────────────
+# [로그 기록]
+# ──────────────────────────────────────────
+TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+PID=$(pgrep -f agent_app.py)
+
+echo "[${TIMESTAMP}] PID:${PID} CPU:${CPU}% MEM:${MEM}% DISK_USED:${DISK}%" 
+
+
+# ──────────────────────────────────────────
+# [로그 용량 관리] 최대 10MB / 10개 파일 유지
+# ──────────────────────────────────────────
+LOG_FILE=/var/log/agent-app/monitor.log
+MAX_SIZE=$((10 * 1024 * 1024))  # 10MB를 바이트로 변환
+MAX_COUNT=10
+
+if [ -f "$LOG_FILE" ]; then
+    CURRENT_SIZE=$(stat -c%s "$LOG_FILE")
+    if [ "$CURRENT_SIZE" -gt "$MAX_SIZE" ]; then
+        for i in $(seq $MAX_COUNT -1 1); do
+            if [ -f "${LOG_FILE}.$((i-1))" ]; then
+                mv "${LOG_FILE}.$((i-1))" "${LOG_FILE}.${i}"
+            fi
+        done
+        mv "$LOG_FILE" "${LOG_FILE}.1"
+    fi
+fi
+
+```
+
+#실행 시 
+```bash
+
+#환경변수 적용
+source /etc/environment
+
+#nano 편집
+nano $AGENT_HOME/bin/monitor.sh
+
+#monitor.log에 대한 권한 부여
+chown agent-admin:agent-admin /var/log/agent-app/monitor.log
+
+chmod +x $AGENT_HOME/bin/monitor.sh
+
+chown agent-dev:agent-core $AGENT_HOME/bin/monitor.sh
+chmod 750 $AGENT_HOME/bin/monitor.sh
+
+#스크립트 실행
+bash $AGENT_HOME/bin/monitor.sh
+
+#직접 관람
+tail -f 
