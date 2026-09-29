@@ -41,6 +41,13 @@
   --shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.55);
 }
 
+/*원래 :root가 우선시 되는 것이 당연함!!
+근데 js가 :root 와 똑같은 요소인 <html>을 [data-theme="dark"]에 붙여버리면
+기본모드인 :root 와 다크모드인 [data-theme="dark"]가 동시에 같은 요소에 존재하게 됨
+이때, [data-theme="dark"]가 더 늦게 나오기 때문에 :root의 기본모드보다 우선되는것
+ex) a=5 , a=4  => a=4 처럼
+
+
 /* ==========================================================================
    리셋 & 기본
    ========================================================================== */
@@ -96,7 +103,7 @@ section {
 .btn {
   display: inline-block;
   padding: 0.75rem 1.5rem;
-  border-radius: var(--radius);
+  border-radius: var(--radius); /*radius = :root 값을 가져와라*/
   font-weight: 600;
   border: 2px solid transparent;
   cursor: pointer;
@@ -107,6 +114,8 @@ section {
   transform: translateY(-2px);
   box-shadow: var(--shadow-hover);
 }
+/* hover 마우스 올려놓으면 -2px translate(떠오르고)
+shadow-hover 되는 것 ( 그림자가 진해지는 것 )   */
 
 .btn--primary {
   background-color: var(--color-primary);

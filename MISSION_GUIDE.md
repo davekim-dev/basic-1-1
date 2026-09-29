@@ -904,14 +904,21 @@ const fetchRepos = async (username) => {
 - `await`는 Promise가 결정될 때까지 **그 함수 안에서만** 기다립니다. 나머지 페이지는 멈추지 않습니다.
 - `await`는 `async` 함수 안에서만 쓸 수 있습니다(모듈 최상위 예외).
 
+사실상 promise를 편하게 쓰기 위해 존재하는 syntatic sugar(문법 설탕)!! 
+정작 promise는 async/await 없어도 정상 작동은 한다고
+
 ### 6.4 `fetch`의 함정 — `res.ok` 확인
 
 **가장 흔한 실수**: `fetch`는 404, 500 같은 HTTP 에러 응답에서 **reject 하지 않습니다.** 네트워크 자체가 실패해야(오프라인, CORS 차단, DNS 실패) reject 합니다.
+
+- 404: 요청은 잘 했는데 받고 보니 리소스가 없다
+- 500: 서버 내부에서 처리 과정에 boom... 클라이언트가 할 수 있는 게 없다.
 
 ```js
 // 잘못됨 — 404가 와도 catch로 안 감. res.json()이 에러 객체를 파싱해서 이상한 화면이 나옴
 const res = await fetch(url);
 const data = await res.json();
+
 
 // 올바름
 const res = await fetch(url);
@@ -922,6 +929,9 @@ const data = await res.json();
 ```
 
 `res.ok`는 상태 코드가 200~299일 때 `true`입니다.
+
+- fetch()는 비동기를 시작하는 함수! 브라우저가 꼽아놓은 webAPI
+- 404, 500 같은 오류 수신도 '수신받았다' 라고 판단!! promise에게 '응답 성공'을 반환!
 
 ### 6.5 try / catch / finally
 
@@ -946,6 +956,17 @@ const loadProjects = async () => {
 - `try`: 에러가 날 수 있는 코드
 - `catch(error)`: `try` 안에서 던져진 에러를 잡음. **여기서 사용자에게 보여줄 화면을 결정**
 - `finally`: 성공/실패와 무관하게 실행 (로딩 스피너 정리 등)
+
+``` python에서의 try - except 와 비슷하다고 생각하면 됨
+
+try로 에러가 날 수 있는 코드로 진입
+js엔진이 연산 시 에러를 발견 throw로 가장 가까운 catch에 에러 객체 전달 (catch를 못 만나면 UncaughtError로 콘솔에)
+catch가 자신의 코드에 맞춰서 사용자에게 에러를 어떻게 보여줄 것인지 계산
+finally는 끝날 때 지나는 검문소
+정상적으로 finally를 지나면 try 다음 줄 실행
+```
+
+
 
 ### 6.6 네 가지 UI 상태 — 왜 이게 요구사항인가
 

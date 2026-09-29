@@ -1,10 +1,19 @@
 // ============================================================
 // 설정값
 // ============================================================
-const GITHUB_USERNAME = "YOUR_GITHUB_USERNAME"; // TODO: 본인 GitHub 아이디로 교체
+const GITHUB_USERNAME = "davekim-dev";
 const SCROLL_TOP_THRESHOLD = 300; // 스크롤 탑 버튼이 나타나는 기준 (px)
 const NAV_SCROLLED_THRESHOLD = 60; // 네비게이션 배경색이 바뀌는 기준 (px)
 const REVEAL_THRESHOLD = 0.2; // IntersectionObserver threshold
+const MESSAGE_MIN_LENGTH = 10; // 메시지 최소 글자 수
+
+// ============================================================
+// 상태 (단일 진실 공급원: DOM이 아니라 이 객체를 읽고 바꾼다)
+// ============================================================
+const state = {
+  theme: "light", // 'light' | 'dark'
+  isMenuOpen: false,
+};
 
 // ============================================================
 // 다크 모드 (상태: theme → 렌더링: data-theme 속성 + 아이콘)
@@ -12,46 +21,49 @@ const REVEAL_THRESHOLD = 0.2; // IntersectionObserver threshold
 const themeToggleBtn = document.querySelector("#theme-toggle");
 const THEME_STORAGE_KEY = "theme";
 
-const applyTheme = (theme) => {
-  document.documentElement.setAttribute("data-theme", theme);
-  themeToggleBtn.textContent = theme === "dark" ? "☀️" : "🌙";
+const renderTheme = () => {
+  document.documentElement.setAttribute("data-theme", state.theme);
+  themeToggleBtn.textContent = state.theme === "dark" ? "☀️" : "🌙";
 };
 
 const initTheme = () => {
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
-  applyTheme(initialTheme);
+  state.theme = savedTheme || (prefersDark ? "dark" : "light");
+  renderTheme();
 };
 
 themeToggleBtn.addEventListener("click", () => {
-  const currentTheme = document.documentElement.getAttribute("data-theme");
-  const nextTheme = currentTheme === "dark" ? "light" : "dark";
-  applyTheme(nextTheme);
-  localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  state.theme = state.theme === "dark" ? "light" : "dark";
+  localStorage.setItem(THEME_STORAGE_KEY, state.theme);
+  renderTheme();
 });
 
 initTheme();
 
 // ============================================================
-// 햄버거 메뉴 토글
+// 햄버거 메뉴 토글 (상태: isMenuOpen → 렌더링: active 클래스 + aria-expanded)
 // ============================================================
 const navToggleBtn = document.querySelector("#nav-toggle");
 const navMenu = document.querySelector("#nav-menu");
 
+const renderMenu = () => {
+  navMenu.classList.toggle("active", state.isMenuOpen);
+  navToggleBtn.classList.toggle("active", state.isMenuOpen);
+  navToggleBtn.setAttribute("aria-expanded", String(state.isMenuOpen));
+};
+
 navToggleBtn.addEventListener("click", () => {
-  const isActive = navMenu.classList.toggle("active");
-  navToggleBtn.classList.toggle("active", isActive);
-  navToggleBtn.setAttribute("aria-expanded", String(isActive));
+  state.isMenuOpen = !state.isMenuOpen;
+  renderMenu();
 });
 
 // 메뉴 링크 클릭 시 모바일 메뉴 닫기
 const navLinks = document.querySelectorAll(".nav__link");
 navLinks.forEach((link) => {
   link.addEventListener("click", () => {
-    navMenu.classList.remove("active");
-    navToggleBtn.classList.remove("active");
-    navToggleBtn.setAttribute("aria-expanded", "false");
+    state.isMenuOpen = false;
+    renderMenu();
   });
 });
 
@@ -115,12 +127,21 @@ revealTargets.forEach((el) => revealObserver.observe(el));
 const projectsGrid = document.querySelector("#projects-grid");
 const projectsStatus = document.querySelector("#projects-status");
 
+// 외부 데이터를 innerHTML에 넣기 전에 HTML 특수문자를 이스케이프 (XSS 방지)
+const escapeHtml = (value) =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
 const renderProjectCard = ({ name, description, html_url, stargazers_count, language }) => `
   <article class="project-card">
-    <h3 class="project-card__title">${name}</h3>
-    <p class="project-card__desc">${description ?? "설명이 없습니다."}</p>
-    <p class="project-card__meta">⭐ ${stargazers_count} ${language ? `· ${language}` : ""}</p>
-    <a href="${html_url}" target="_blank" rel="noopener noreferrer" class="btn btn--secondary">Repo 보기</a>
+    <h3 class="project-card__title">${escapeHtml(name)}</h3>
+    <p class="project-card__desc">${escapeHtml(description ?? "설명이 없습니다.")}</p>
+    <p class="project-card__meta">⭐ ${escapeHtml(stargazers_count)} ${language ? `· ${escapeHtml(language)}` : ""}</p>
+    <a href="${escapeHtml(html_url)}" target="_blank" rel="noopener noreferrer" class="btn btn--secondary">Repo 보기</a>
   </article>
 `;
 
@@ -219,6 +240,9 @@ const validateForm = ({ name, email, message }) => {
   if (!message.trim()) {
     showError("message", "메시지를 입력해주세요.");
     isValid = false;
+  } else if (message.trim().length < MESSAGE_MIN_LENGTH) {
+    showError("message", `메시지는 ${MESSAGE_MIN_LENGTH}자 이상 입력해주세요.`);
+    isValid = false;
   }
 
   return isValid;
@@ -241,8 +265,19 @@ contactForm.addEventListener("submit", (event) => {
 });
 
 // 입력 중 실시간으로 에러 지우기
-[nameInput, emailInput, messageInput].forEach((input) => {
+[nameInput, emailInput].forEach((input) => {
   input.addEventListener("input", () => {
     showError(input.id, "");
   });
+});
+
+// 메시지는 입력 중에도 글자 수 안내 (비어 있을 때는 제출 시에만 에러 표시)
+messageInput.addEventListener("input", () => {
+  const { length } = messageInput.value.trim();
+  const isTooShort = length > 0 && length < MESSAGE_MIN_LENGTH;
+
+  showError(
+    "message",
+    isTooShort ? `메시지는 ${MESSAGE_MIN_LENGTH}자 이상 입력해주세요.` : ""
+  );
 });
