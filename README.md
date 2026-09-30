@@ -7,6 +7,11 @@
 
 🔗 https://davekim-dev.github.io/basic-4-1/
 
+python -m http.server 5500
+http://localhost:5500
+
+
+
 ## 사용 기술
 
 - **HTML5** — 시맨틱 마크업 (`header`, `nav`, `main`, `section`, `article`, `footer`)

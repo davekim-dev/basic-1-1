@@ -45,7 +45,7 @@
 근데 js가 :root 와 똑같은 요소인 <html>을 [data-theme="dark"]에 붙여버리면
 기본모드인 :root 와 다크모드인 [data-theme="dark"]가 동시에 같은 요소에 존재하게 됨
 이때, [data-theme="dark"]가 더 늦게 나오기 때문에 :root의 기본모드보다 우선되는것
-ex) a=5 , a=4  => a=4 처럼
+ex) a=5 , a=4  => a=4 처럼*/
 
 
 /* ==========================================================================
@@ -313,6 +313,24 @@ shadow-hover 되는 것 ( 그림자가 진해지는 것 )   */
 /* ==========================================================================
    Projects (Grid)
    ========================================================================== */
+.projects__filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.filter-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.9rem;
+}
+
+.filter-btn.active {
+  background-color: var(--color-primary);
+  color: #fff;
+}
+
 .projects__status {
   text-align: center;
   color: var(--color-text-muted);
